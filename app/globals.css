@@ -1,26 +1,140 @@
 @import "tailwindcss";
 
+/* ─── Design tokens ────────────────────────────────────────────────────
+   Brand: deep teal (calm, neutral — explicitly avoiding the AI-purple tell).
+   Accent: amber, reserved for streaks / reward unlock moments.
+   Surface: warm off-white (not pure #fff).
+   Ink: zinc-900, not pure black.
+   Mono: Geist Mono (already loaded) for streak counters and metrics.
+   ──────────────────────────────────────────────────────────────────── */
+
 :root {
-  --background: #ffffff;
-  --foreground: #171717;
+  --background: #FAFAF9;
+  --foreground: #18181B;
+  --brand: #0F766E;
+  --brand-soft: #CCFBF1;
+  --accent: #F59E0B;
+  --accent-soft: #FEF3C7;
+  --ink: #18181B;
+  --muted: #71717A;
+  --line: #E7E5E4;
+  --danger: #B91C1C;
+  --success: #047857;
+}
+
+@media (prefers-color-scheme: dark) {
+  :root {
+    --background: #0A0A0A;
+    --foreground: #FAFAF9;
+    --brand: #2DD4BF;
+    --brand-soft: #134E4A;
+    --accent: #FBBF24;
+    --accent-soft: #422006;
+    --ink: #FAFAF9;
+    --muted: #A1A1AA;
+    --line: #27272A;
+    --danger: #F87171;
+    --success: #34D399;
+  }
 }
 
 @theme inline {
   --color-background: var(--background);
   --color-foreground: var(--foreground);
+  --color-brand: var(--brand);
+  --color-brand-soft: var(--brand-soft);
+  --color-accent: var(--accent);
+  --color-accent-soft: var(--accent-soft);
+  --color-ink: var(--ink);
+  --color-muted: var(--muted);
+  --color-line: var(--line);
+  --color-danger: var(--danger);
+  --color-success: var(--success);
   --font-sans: var(--font-geist-sans);
   --font-mono: var(--font-geist-mono);
-}
-
-@media (prefers-color-scheme: dark) {
-  :root {
-    --background: #0a0a0a;
-    --foreground: #ededed;
-  }
 }
 
 body {
   background: var(--background);
   color: var(--foreground);
-  font-family: Arial, Helvetica, sans-serif;
+  font-family: var(--font-sans), system-ui, sans-serif;
+  font-feature-settings: "ss01", "cv11";
+  -webkit-font-smoothing: antialiased;
+}
+
+/* Subtle film grain overlay — pointer-events-none so it never blocks input.
+   Fixed so it doesn't repaint on scroll (per skill performance rules). */
+body::before {
+  content: "";
+  position: fixed;
+  inset: 0;
+  pointer-events: none;
+  z-index: 50;
+  opacity: 0.025;
+  background-image: url("data:image/svg+xml;utf8,<svg viewBox='0 0 200 200' xmlns='http://www.w3.org/2000/svg'><filter id='n'><feTurbulence type='fractalNoise' baseFrequency='0.9' numOctaves='2'/></filter><rect width='100%' height='100%' filter='url(%23n)'/></svg>");
+}
+
+/* Reduced-motion respect for any future animations. */
+@media (prefers-reduced-motion: reduce) {
+  *, *::before, *::after {
+    animation-duration: 0.01ms !important;
+    transition-duration: 0.01ms !important;
+  }
+}
+
+/* ─── Motion utilities ───────────────────────────────────────────────
+   Premium, restrained — never louder than 350ms. All transform/opacity
+   only (per skill hardware-acceleration rules). */
+
+@keyframes check-pop {
+  0% {
+    transform: scale(0.6);
+    opacity: 0.6;
+  }
+  60% {
+    transform: scale(1.08);
+    opacity: 1;
+  }
+  100% {
+    transform: scale(1);
+    opacity: 1;
+  }
+}
+
+@keyframes fade-in-up {
+  from {
+    opacity: 0;
+    transform: translateY(6px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+@keyframes reward-pulse {
+  0% {
+    transform: scale(1);
+    box-shadow: 0 0 0 0 var(--accent);
+  }
+  60% {
+    transform: scale(1.04);
+    box-shadow: 0 0 0 8px transparent;
+  }
+  100% {
+    transform: scale(1);
+    box-shadow: 0 0 0 0 transparent;
+  }
+}
+
+@utility animate-check-pop {
+  animation: check-pop 280ms cubic-bezier(0.16, 1, 0.3, 1);
+}
+
+@utility animate-fade-in-up {
+  animation: fade-in-up 360ms cubic-bezier(0.16, 1, 0.3, 1) both;
+}
+
+@utility animate-reward-pulse {
+  animation: reward-pulse 600ms cubic-bezier(0.16, 1, 0.3, 1);
 }

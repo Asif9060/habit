@@ -1,0 +1,8 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(node .puku-cli/skills/verify/typecheck-hook.cjs)",
+      "Bash(echo \"exit=$?\")"
+    ]
+  }
+}

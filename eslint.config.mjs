@@ -12,6 +12,9 @@ const eslintConfig = defineConfig([
     "out/**",
     "build/**",
     "next-env.d.ts",
+    // Agent tooling lives here — Node CJS scripts for hooks, plain JS/MD
+    // for skills. None of it is application code.
+    ".puku-cli/**",
   ]),
 ]);
 
