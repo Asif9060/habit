@@ -15,7 +15,13 @@
 
 import { NextResponse, type NextRequest } from "next/server";
 
-const PROTECTED_PREFIXES = ["/dashboard", "/habits", "/rewards", "/profile"];
+const PROTECTED_PREFIXES = [
+  "/dashboard",
+  "/habits",
+  "/rewards",
+  "/profile",
+  "/discipline",
+];
 const ADMIN_PREFIX = "/admin";
 
 const SESSION_COOKIE_CANDIDATES = [

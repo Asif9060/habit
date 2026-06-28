@@ -331,9 +331,15 @@ export function PrayerChecklistRail() {
           longest={instantStreak.longest}
         />
       </div>
-      <p className="text-xs text-muted text-center max-w-[24ch] mx-auto leading-relaxed">
-        A single missed day resets your counter to zero. There&rsquo;s no undo
-        button — only tomorrow&rsquo;s Fajr.
+      <p className="text-xs text-muted text-center max-w-[28ch] mx-auto leading-relaxed">
+        A missed day resets your counter. Earn a chance at{" "}
+        <a
+          href="/discipline"
+          className="text-ink underline-offset-4 hover:underline font-medium"
+        >
+          /discipline
+        </a>{" "}
+        and bridge it.
       </p>
     </div>
   );

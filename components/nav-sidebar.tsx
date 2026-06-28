@@ -11,6 +11,7 @@ import {
   SignOutIcon,
   GearIcon,
   CloseIcon,
+  SparkleIcon,
 } from "@/components/icons";
 import { signOut } from "@/lib/auth-client";
 import { cn } from "@/lib/cn";
@@ -45,6 +46,7 @@ export function Sidebar({ user }: { user: SidebarUser }) {
   const nav: { href: string; label: string; icon: React.ElementType }[] = [
     { href: "/dashboard", label: "Today", icon: HouseIcon },
     { href: "/habits", label: "Habits", icon: ListChecksIcon },
+    { href: "/discipline", label: "Discipline", icon: SparkleIcon },
     { href: "/rewards", label: "Rewards", icon: TrophyIcon },
     { href: "/profile", label: "Profile", icon: UserIcon },
   ];

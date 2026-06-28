@@ -13,4 +13,13 @@ export async function register(): Promise<void> {
   } catch (err) {
     console.error("[instrumentation] seed failed:", err);
   }
+
+  try {
+    const { ensureDisciplineIndexes } = await import(
+      "@/lib/discipline-indexes"
+    );
+    await ensureDisciplineIndexes();
+  } catch (err) {
+    console.error("[instrumentation] discipline indexes failed:", err);
+  }
 }

@@ -330,3 +330,202 @@ export async function readTodayLog(
     completedItemKeys: log?.completedItemKeys ?? [],
   };
 }
+
+// ─── Retro-mark (bridge a missed day using a chance) ───────────────────────
+//
+// Discipline feature: when a user spends a chance to mark a forgotten day's
+// prayers, we treat the chosen day as if it had been a real completion and
+// replay the streak math forward to recompute `current` and `longest`. The
+// pure `computeNextStreak` already handles "yesterday follows last → +1",
+// so we reuse it directly.
+//
+// Important rule (per product spec): reward grants only fire if the user
+// marked ALL items for the bridged day. Partial bridges restore streak
+// continuity but skip reward evaluation — so a user can't game thresholds
+// by retro-marking partial days.
+
+export class BridgeConflictError extends Error {
+  readonly code = "bridge_conflict" as const;
+  constructor(public dayKey: DayKey) {
+    super(`Day ${dayKey} already has a logged completion.`);
+  }
+}
+
+export class BridgeDayInvalidError extends Error {
+  readonly code = "bridge_day_invalid" as const;
+  constructor(public dayKey: DayKey, public reason: string) {
+    super(`Cannot bridge ${dayKey}: ${reason}`);
+  }
+}
+
+interface BridgeParams {
+  userId: string;
+  habitDefId: string;
+  timezone: string;
+  /** The PAST day being backfilled. Must be strictly less than today in `timezone`. */
+  dayKey: DayKey;
+  completedItemKeys: string[];
+  now?: Date;
+}
+
+interface BridgeResult {
+  streak: StreakState;
+  newRewards: Reward[];
+  allItemsMarked: boolean;
+}
+
+/**
+ * Bridges a missed day using a chance (the chance-spend is the caller's
+ * responsibility — see `lib/discipline.ts#spendChanceForRetroMark`). This
+ * function only mutates `habit_logs` and `streaks` and runs reward grants.
+ *
+ * Validation:
+ *   1. `dayKey` must be < today (in user tz). Today cannot be bridged.
+ *   2. `habit_logs` must not already contain a row for that day — no
+ *      double-bridging, no overwriting a real completion.
+ *   3. The habit must have at least one item.
+ *
+ * Streak math:
+ *   We read the existing streak doc, then call `computeNextStreak` with the
+ *   bridged dayKey. If the gap between `lastCompletedDayKey` and `dayKey`
+ *   is exactly 1 day, the streak extends; otherwise the gap rule resets
+ *   the count to 1 — same as a real completion today would after a gap.
+ *   Persisted `lastCompletedDayKey` is the bridged day, so subsequent
+ *   `applyCompletion` calls on the next real day will see "yesterday" and
+ *   continue the streak naturally.
+ *
+ * Reward gating:
+ *   Only when `completedItemKeys.length === habit.items.length` do we run
+ *   `grantEligibleRewards`. Partial bridges still update the log + streak
+ *   doc but skip reward evaluation entirely.
+ */
+export async function bridgeMissedDayWithChance({
+  userId,
+  habitDefId,
+  timezone,
+  dayKey,
+  completedItemKeys,
+  now,
+}: BridgeParams): Promise<BridgeResult> {
+  const db = await getDb();
+  const today = dayKeyFor(now ?? new Date(), timezone);
+
+  // Validation 1: target day must be strictly before today.
+  if (dayKey >= today) {
+    throw new BridgeDayInvalidError(
+      dayKey,
+      "target day must be in the past, not today"
+    );
+  }
+
+  // Look up habit_def to validate item keys and get item count.
+  const habitDef = await db
+    .collection<HabitDef>("habit_defs")
+    .findOne({ _id: habitDefId } as never);
+  if (!habitDef) {
+    throw new BridgeDayInvalidError(dayKey, "habit not found");
+  }
+  const validKeys = new Set(habitDef.items.map((i) => i.key));
+  const cleaned: string[] = [];
+  const seen = new Set<string>();
+  for (const k of completedItemKeys) {
+    if (!validKeys.has(k)) continue;
+    if (seen.has(k)) continue;
+    seen.add(k);
+    cleaned.push(k);
+  }
+  if (cleaned.length === 0) {
+    throw new BridgeDayInvalidError(
+      dayKey,
+      "must mark at least one prayer to bridge"
+    );
+  }
+
+  // Validation 2: no existing log row for the target day.
+  const existing = await db
+    .collection("habit_logs")
+    .findOne(
+      { userId, habitDefId, dayKey },
+      { projection: { _id: 1 } }
+    );
+  if (existing) {
+    throw new BridgeConflictError(dayKey);
+  }
+
+  const allItemsMarked = cleaned.length === habitDef.items.length;
+
+  // Upsert the log row. Identical shape to applyCompletion's write, so the
+  // rest of the app reads the row the same way regardless of how it landed.
+  await db.collection("habit_logs").updateOne(
+    { userId, habitDefId, dayKey },
+    {
+      $set: {
+        completedItemKeys: cleaned,
+        completedAt: now ?? new Date(),
+      },
+      $setOnInsert: {
+        userId,
+        habitDefId,
+        dayKey,
+      },
+    },
+    { upsert: true }
+  );
+
+  // Read existing streak doc to get the prev state.
+  const streaks = db.collection("streaks");
+  const prev = await streaks.findOne({ userId, habitDefId });
+
+  // Replay the math. If the user had no streak yet (first ever completion),
+  // computeNextStreak treats it as `current = 1`. If they had a streak and
+  // the bridged day is exactly the day after `lastCompletedDayKey`, the
+  // count grows by 1 — bridging the gap. Anything more than a 1-day gap
+  // resets to 1, matching the "real completion today after a gap" rule.
+  //
+  // Edge case: if the user previously had a streak that ALREADY ended with
+  // a gap (i.e. lastCompletedDayKey was set but is far in the past), we
+  // still want a fresh "1 day from today" streak anchored at the bridged
+  // dayKey, so the next real completion tomorrow will continue it.
+  const next = computeNextStreak(
+    {
+      current: prev?.current ?? 0,
+      longest: prev?.longest ?? 0,
+      lastCompletedDayKey: prev?.lastCompletedDayKey ?? null,
+    },
+    dayKey
+  );
+
+  await streaks.updateOne(
+    { userId, habitDefId },
+    {
+      $set: {
+        current: next.current,
+        longest: next.longest,
+        lastCompletedDayKey: next.lastCompletedDayKey,
+        lastEvaluatedDayKey: dayKey,
+        updatedAt: new Date(),
+      },
+      $setOnInsert: { userId, habitDefId },
+    },
+    { upsert: true }
+  );
+
+  // Reward gating: only when ALL items are marked.
+  const newRewards = allItemsMarked
+    ? await grantEligibleRewards({
+        userId,
+        habitDefId,
+        streakCurrent: next.current,
+      })
+    : [];
+
+  return {
+    streak: {
+      current: next.current,
+      longest: next.longest,
+      lastCompletedDayKey: next.lastCompletedDayKey,
+    },
+    newRewards,
+    allItemsMarked,
+  };
+}
